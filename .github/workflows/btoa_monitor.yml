@@ -46,7 +46,7 @@ jobs:
           GMAIL_APP_PASS: ${{ secrets.GMAIL_APP_PASS }}
           NOTIFY_EMAILS: ${{ secrets.NOTIFY_EMAILS }}
           FORCE_EMAIL: ${{ github.event.inputs.force }}
-        run: python btoa_monitor.py
+        run: python code/btoa_monitor.py
 
       - name: Check StatCan Windsor-area data
         env:
@@ -54,7 +54,7 @@ jobs:
           GMAIL_APP_PASS: ${{ secrets.GMAIL_APP_PASS }}
           NOTIFY_EMAILS: ${{ secrets.NOTIFY_EMAILS }}
           FORCE_EMAIL: ${{ github.event.inputs.force }}
-        run: python statcan_monitor.py
+        run: python code/statcan_monitor.py
 
       - name: Check BTS (US) border crossing data
         env:
@@ -62,7 +62,7 @@ jobs:
           GMAIL_APP_PASS: ${{ secrets.GMAIL_APP_PASS }}
           NOTIFY_EMAILS: ${{ secrets.NOTIFY_EMAILS }}
           FORCE_EMAIL: ${{ github.event.inputs.force }}
-        run: python bts_monitor.py
+        run: python code/bts_monitor.py
 
       - name: Commit data files if updated
         run: |

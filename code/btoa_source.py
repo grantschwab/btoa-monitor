@@ -14,11 +14,12 @@ from openpyxl.utils import get_column_letter
 BTOA_URL = "https://www.bridgeandtunneloperators.org/images/BTOA%20Traffic%202026.xlsx"
 BTOA_PAGE_URL = "https://www.bridgeandtunneloperators.org/index.php/traffic"
 
-BRIDGE_ORDER = ["AMB", "BWB", "DWT"]
+BRIDGE_ORDER = ["AMB", "BWB", "DWT", "GHIB"]
 BRIDGE_LABELS = {
     "AMB": "Ambassador Bridge (Detroit)",
     "BWB": "Blue Water Bridge (Port Huron)",
     "DWT": "Detroit-Windsor Tunnel",
+    "GHIB": "Gordie Howe International Bridge",
 }
 
 # (source row classification, output sheet name)
@@ -34,6 +35,15 @@ CHART_CATEGORIES = [
     ("Passenger Cars", "Passenger cars"),
     ("Trucks", "Trucks"),
 ]
+
+# Same ordering, shorter labels, for the per-month bar-chart snapshot tabs.
+SNAPSHOT_CATEGORIES = [
+    ("TOTAL", "Total"),
+    ("Passenger Cars", "Cars"),
+    ("Trucks", "Trucks"),
+]
+# First month to get its own bar-chart snapshot tab.
+SNAPSHOT_START_YM = (2026, 8)
 
 MONTH_NAMES = [
     "January", "February", "March", "April", "May", "June",
@@ -161,7 +171,7 @@ def build_workbook(xlsx_bytes, path, min_year=2019):
                 row.append(int(v) if v is not None else None)
             row.append(category_label)
             ws.append(row)
-    for i, w in enumerate([16, 22, 24, 22, 16], start=1):
+    for i, w in enumerate([16] + [24] * len(BRIDGE_ORDER) + [16], start=1):
         ws.column_dimensions[get_column_letter(i)].width = w
     ws.freeze_panes = "A2"
 
@@ -196,6 +206,41 @@ def build_workbook(xlsx_bytes, path, min_year=2019):
             ws.column_dimensions[get_column_letter(i)].width = w
         ws.freeze_panes = "A2"
 
+    # --- Per-month bar-chart snapshot tabs (this month vs. same month last
+    # year), one tab per month from SNAPSHOT_START_YM through the latest
+    # reported month. Rebuilt from source each time, so these stay correct
+    # and a new tab simply appears once a new month clears the cutoff. ---
+    snapshot_months = [
+        ym for ym in display_months
+        if ym >= SNAPSHOT_START_YM and (cutoff is None or ym <= cutoff)
+    ]
+    for ym in snapshot_months:
+        y, m = ym
+        prev_y = y - 1
+        sheet_name = f"{MONTH_NAMES[m-1]} {y}"
+        ws = wb.create_sheet(sheet_name)
+        headers = ["crossing", f"month_{prev_y}", f"month_{y}", "pct_change", "category"]
+        ws.append(headers)
+        _style_header(ws, len(headers))
+
+        for classification, category_label in SNAPSHOT_CATEGORIES:
+            for b in BRIDGE_ORDER:
+                cur = bridges[b].get((y, m), {}).get(classification)
+                prev = bridges[b].get((prev_y, m), {}).get(classification)
+                pct = (cur - prev) / prev if (cur is not None and prev) else None
+                ws.append([
+                    BRIDGE_LABELS[b],
+                    int(prev) if prev is not None else None,
+                    int(cur) if cur is not None else None,
+                    pct,
+                    category_label,
+                ])
+                ws.cell(row=ws.max_row, column=4).number_format = "0.0%"
+
+        for i, w in enumerate([28, 14, 14, 12, 12], start=1):
+            ws.column_dimensions[get_column_letter(i)].width = w
+        ws.freeze_panes = "A2"
+
     # --- Methodology ---
     ws = wb.create_sheet("Methodology")
     ws.column_dimensions["A"].width = 105
@@ -203,9 +248,10 @@ def build_workbook(xlsx_bytes, path, min_year=2019):
         ("Source", "Bridge and Tunnel Operators Association (BTOA)"),
         ("Source file", BTOA_URL),
         ("Source page", BTOA_PAGE_URL),
-        ("Coverage", "Ambassador Bridge, Blue Water Bridge, Detroit-Windsor Tunnel -- bidirectional (both directions combined), operator-reported."),
+        ("Coverage", "Ambassador Bridge, Blue Water Bridge, Detroit-Windsor Tunnel, Gordie Howe International Bridge -- bidirectional (both directions combined), operator-reported. GHIB opened July 27, 2026, so its columns are blank before then and partial for its first (July 2026) month."),
         ("Vehicle categories", "'Overall traffic' = TOTAL row (Passenger Cars + Trucks + Buses & Misc.). 'Car traffic' = Passenger Cars. 'Truck traffic' = Trucks. Buses & Misc. is in the source but not broken out in its own tab here."),
         ("Chart Data tab", "Long format for charting: one row per month per category (Total vehicles, Passenger cars, Trucks, in that order), with each bridge as a column. Matches the layout used for the existing chart."),
+        ("Monthly snapshot tabs", f"One tab per month from {MONTH_NAMES[SNAPSHOT_START_YM[1]-1]} {SNAPSHOT_START_YM[0]} onward (e.g. 'August 2026'), formatted for a bar chart: crossing, this month vs. same month prior year, pct_change, category (Total/Cars/Trucks). A new tab appears automatically once that month is reported."),
         ("Date range shown", f"{min_year}-present. Underlying source data goes back further (to 2006) and is used internally to compute YoY % for {min_year}, but only {min_year}+ rows are shown."),
         ("YoY %", "(this month - same month prior year) / prior year."),
         ("Rebuilt", datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")),
