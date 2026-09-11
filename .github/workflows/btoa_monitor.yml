@@ -1,0 +1,43 @@
+name: BTOA Monitor
+
+on:
+  schedule:
+    - cron: "0 13 * * *"
+  workflow_dispatch:
+    inputs:
+      force:
+        description: 'Force email even if file is unchanged (test mode)'
+        type: boolean
+        default: false
+
+concurrency:
+  group: btoa-monitor
+  cancel-in-progress: true
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore state
+        uses: actions/cache@v4
+        with:
+          path: state.json
+          key: btoa-state-${{ github.run_id }}
+          restore-keys: btoa-state-
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Check BTOA traffic file
+        env:
+          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASS: ${{ secrets.GMAIL_APP_PASS }}
+          NOTIFY_EMAILS: ${{ secrets.NOTIFY_EMAILS }}
+          FORCE_EMAIL: ${{ github.event.inputs.force }}
+        run: python btoa_monitor.py
