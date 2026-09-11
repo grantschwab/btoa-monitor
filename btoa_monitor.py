@@ -1,12 +1,10 @@
 import io
 import os
-import json
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
 from datetime import datetime, timezone
 import requests
 import openpyxl
+
+from common import load_state, save_state, send_email
 
 BTOA_URL = "https://www.bridgeandtunneloperators.org/images/BTOA%20Traffic%202026.xlsx"
 BTOA_PAGE_URL = "https://www.bridgeandtunneloperators.org/index.php/traffic"
@@ -21,24 +19,6 @@ MONTH_NAMES = [
 ]
 
 STATE_FILE = "state.json"
-
-
-# ---------------------------------------------------------------------------
-# State
-# ---------------------------------------------------------------------------
-
-def load_state():
-    try:
-        with open(STATE_FILE) as f:
-            data = json.load(f)
-            return data if isinstance(data, dict) else {}
-    except (FileNotFoundError, json.JSONDecodeError):
-        return {}
-
-
-def save_state(state):
-    with open(STATE_FILE, "w") as f:
-        json.dump(state, f, indent=2)
 
 
 # ---------------------------------------------------------------------------
@@ -118,28 +98,12 @@ def build_email(prev_ym, new_ym, force=False):
 </body></html>"""
 
 
-def send_email(html, force=False):
-    user = os.environ["GMAIL_USER"]
-    pwd = os.environ["GMAIL_APP_PASS"]
-    recipients = [e.strip() for e in os.environ["NOTIFY_EMAILS"].split(",")]
-    msg = MIMEMultipart("alternative")
-    prefix = "[TEST] " if force else ""
-    msg["Subject"] = f"{prefix}[BTOA Alert] New month of traffic data available"
-    msg["From"] = user
-    msg["To"] = ", ".join(recipients)
-    msg.attach(MIMEText(html, "html"))
-    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as s:
-        s.login(user, pwd)
-        s.sendmail(user, recipients, msg.as_string())
-    print(f"Email sent to: {', '.join(recipients)}")
-
-
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
 def main():
-    state = load_state()
+    state = load_state(STATE_FILE)
     force = os.environ.get("FORCE_EMAIL", "").lower() == "true"
     if force:
         print("*** FORCE MODE — will email regardless of state ***")
@@ -170,7 +134,7 @@ def main():
 
     if new_month_available or force:
         html = build_email(prev_ym, new_ym, force=force)
-        send_email(html, force=force)
+        send_email("[BTOA Alert] New month of traffic data available", html, force=force)
     else:
         print("  File changed but no new month detected (e.g. a formatting re-save). Not emailing.")
 
@@ -181,7 +145,7 @@ def main():
     if new_month_available:
         state["latest_ym"] = list(new_ym)
         state["latest_ym_detected_at"] = datetime.now(timezone.utc).isoformat()
-    save_state(state)
+    save_state(STATE_FILE, state)
 
 
 if __name__ == "__main__":

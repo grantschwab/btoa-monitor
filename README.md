@@ -1,26 +1,49 @@
-# BTOA Traffic Monitor
+# Border Crossing Data Monitor
 
-Watches the Bridge and Tunnel Operators Association's `BTOA Traffic 2026.xlsx`
-(https://www.bridgeandtunneloperators.org/index.php/traffic) for changes and
-emails an alert when the file is updated.
+Watches three border-crossing data sources for the Detroit-Windsor area and
+emails an alert when new data becomes available. Runs daily via GitHub
+Actions.
 
-## Why Last-Modified instead of ETag
+## Sources
 
-BTOA's server (Apache) doesn't send an `ETag` header on this file — only
-`Last-Modified` and `Content-Length`. `btoa_monitor.py` combines both into a
-single signature string and alerts whenever it changes. This is a coarser
-signal than ETag: a formatting-only re-save of the workbook (no new monthly
-data) will also trigger an alert. There's no in-file diffing — the email just
-tells you the file changed and links to it so you can check for yourself
-whether new monthly figures appeared.
+| Monitor | Source | Covers | Cadence (observed) |
+|---|---|---|---|
+| `btoa_monitor.py` | BTOA (bridge/tunnel operators) spreadsheet | AMB, BWB, DWT — bidirectional, per-bridge | Monthly, undocumented lag |
+| `statcan_monitor.py` | Statistics Canada table 24-10-0057 (Frontier Counts) | GHIB, AMB+DWT (combined), BWB — **northbound only** (into Canada) | Monthly, ~11-day lag |
+| `bts_monitor.py` | BTS Border Crossing/Entry Data (CBP) | Detroit port (AMB+DWT+GHIB combined), Port Huron (BWB) — **southbound only** (into the US) | Monthly, longer lag than StatCan |
+
+StatCan is the fastest of the three and is the only one that separates GHIB
+from Ambassador Bridge/DWT — but it's northbound-only. BTOA is the only
+source that's bidirectional *and* separates all bridges, but is the slowest.
+BTS fills in the southbound leg with a US government source, faster in
+principle than BTOA but still behind StatCan.
+
+## Output data (`data/`)
+
+- **`statcan_windsor_area_monthly.xlsx`** — monthly total/Canadian/American
+  trips with YoY %, one sheet per crossing (GHIB, AMB+DWT, BWB), rebuilt by
+  `statcan_monitor.py`.
+- **`harmonized_windsor_detroit_monthly.xlsx`** — StatCan (northbound) and
+  BTS (southbound) side by side per month, with a combined bidirectional
+  total once both sides have data. Two sheets: Windsor-Detroit and
+  Sarnia-Port Huron. Rebuilt by both `statcan_monitor.py` and
+  `bts_monitor.py`, since either source updating changes it.
+  **Caveat:** CBP has no separate GHIB port code, so on the Windsor-Detroit
+  sheet the southbound figure is always AMB+DWT+GHIB combined — GHIB can't
+  be isolated bidirectionally, only northbound.
+
+Both are committed back to the repo automatically when a monitor detects
+new data (see the workflow's "Commit data files if updated" step).
 
 ## How it runs
 
-GitHub Actions cron, once daily (`0 13 * * *`, ~9am ET). State (the last-seen
-signature) is kept in `state.json`, persisted between runs via
-`actions/cache` — not committed to git — using the same "unique key + prefix
-restore-keys" trick as the recall-tool monitor, so the cache grows
-monotonically without race conditions.
+One GitHub Actions workflow (`.github/workflows/btoa_monitor.yml`), daily at
+13:00 UTC (~9am ET), runs all three monitors in sequence, then commits any
+updated spreadsheets. Each monitor keeps its own state file
+(`state.json` / `statcan_state.json` / `bts_state.json`), cached via
+`actions/cache` (not committed to git) using the same "unique key + prefix
+restore-keys" trick so the cache grows monotonically without race
+conditions.
 
 ## Setup
 
@@ -31,13 +54,13 @@ Repo secrets required:
 
 ## Testing
 
-Trigger the workflow manually via **Actions → BTOA Monitor → Run workflow**
-with `force: true` to send a test email regardless of whether the file has
-changed.
+Trigger the workflow manually via **Actions → Border Crossing Monitor → Run
+workflow** with `force: true` to send test emails from all three monitors
+regardless of whether anything changed.
 
-To run locally:
+To run a single monitor locally:
 
 ```
 pip install -r requirements.txt
-GMAIL_USER=... GMAIL_APP_PASS=... NOTIFY_EMAILS=... FORCE_EMAIL=true python btoa_monitor.py
+GMAIL_USER=... GMAIL_APP_PASS=... NOTIFY_EMAILS=... FORCE_EMAIL=true python statcan_monitor.py
 ```

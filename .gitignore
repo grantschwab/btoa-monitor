@@ -1,3 +1,6 @@
 state.json
+statcan_state.json
+bts_state.json
 btoa_credentials.txt
 __pycache__/
+.DS_Store

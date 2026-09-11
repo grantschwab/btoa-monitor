@@ -1,4 +1,4 @@
-name: BTOA Monitor
+name: Border Crossing Monitor
 
 on:
   schedule:
@@ -6,13 +6,16 @@ on:
   workflow_dispatch:
     inputs:
       force:
-        description: 'Force email even if file is unchanged (test mode)'
+        description: 'Force email even if nothing changed (test mode)'
         type: boolean
         default: false
 
 concurrency:
   group: btoa-monitor
   cancel-in-progress: true
+
+permissions:
+  contents: write
 
 jobs:
   monitor:
@@ -23,9 +26,12 @@ jobs:
       - name: Restore state
         uses: actions/cache@v4
         with:
-          path: state.json
-          key: btoa-state-${{ github.run_id }}
-          restore-keys: btoa-state-
+          path: |
+            state.json
+            statcan_state.json
+            bts_state.json
+          key: border-monitor-state-${{ github.run_id }}
+          restore-keys: border-monitor-state-
 
       - uses: actions/setup-python@v5
         with:
@@ -41,3 +47,33 @@ jobs:
           NOTIFY_EMAILS: ${{ secrets.NOTIFY_EMAILS }}
           FORCE_EMAIL: ${{ github.event.inputs.force }}
         run: python btoa_monitor.py
+
+      - name: Check StatCan Windsor-area data
+        env:
+          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASS: ${{ secrets.GMAIL_APP_PASS }}
+          NOTIFY_EMAILS: ${{ secrets.NOTIFY_EMAILS }}
+          FORCE_EMAIL: ${{ github.event.inputs.force }}
+        run: python statcan_monitor.py
+
+      - name: Check BTS (US) border crossing data
+        env:
+          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASS: ${{ secrets.GMAIL_APP_PASS }}
+          NOTIFY_EMAILS: ${{ secrets.NOTIFY_EMAILS }}
+          FORCE_EMAIL: ${{ github.event.inputs.force }}
+        run: python bts_monitor.py
+
+      - name: Commit data files if updated
+        run: |
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+          git add data/*.xlsx 2>/dev/null || true
+          git diff --staged --quiet && echo "Data unchanged, nothing to commit." && exit 0
+          git commit -m "data: update monthly spreadsheets [skip ci]"
+          for i in 1 2 3; do
+            git fetch origin main
+            git rebase origin/main && git push origin HEAD:main && exit 0
+            echo "Retry $i..." && sleep $((i * 3))
+          done
+          echo "::error::Failed to push data update after 3 retries" && exit 1
