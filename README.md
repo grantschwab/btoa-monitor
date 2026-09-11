@@ -20,6 +20,13 @@ principle than BTOA but still behind StatCan.
 
 ## Output data (`data/`)
 
+- **`btoa_traffic_analysis.xlsx`** — rebuilt by `btoa_monitor.py` whenever a
+  new month lands. Per-bridge (AMB/BWB/DWT) monthly figures, 2019-present:
+  - `Chart Data` — long format for charting: one row per month per category
+    (Total vehicles, Passenger cars, Trucks, in that order), bridges as
+    columns. Matches the layout used for the existing chart.
+  - `Overall traffic` / `Car traffic` / `Truck traffic` — one sheet each,
+    per-bridge monthly totals + YoY % columns.
 - **`statcan_windsor_area_monthly.xlsx`** — monthly total/Canadian/American
   trips with YoY %, one sheet per crossing (GHIB, AMB+DWT, BWB), rebuilt by
   `statcan_monitor.py`.
@@ -32,8 +39,8 @@ principle than BTOA but still behind StatCan.
   sheet the southbound figure is always AMB+DWT+GHIB combined — GHIB can't
   be isolated bidirectionally, only northbound.
 
-Both are committed back to the repo automatically when a monitor detects
-new data (see the workflow's "Commit data files if updated" step).
+All three are committed back to the repo automatically when a monitor
+detects new data (see the workflow's "Commit data files if updated" step).
 
 ## How it runs
 
