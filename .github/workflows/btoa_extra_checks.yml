@@ -1,0 +1,82 @@
+name: BTOA Extra Checks (finalization window)
+
+# BTOA typically finalizes and republishes its spreadsheet ~14 days after
+# the start of the month. This workflow adds extra checks around that
+# window (the 14th, 15th, and the 16th if the 14th or 15th falls on a
+# weekend) at 9am/noon/3pm/6pm ET, on top of the regular daily check in
+# btoa_monitor.yml, to catch the update sooner than a once-a-day cron would.
+#
+# Cron times below are fixed UTC (9am/12pm/3pm/6pm EDT = 13/16/19/22 UTC)
+# and don't shift for standard time — during EST (winter) these effectively
+# run an hour earlier than intended local time. Not worth the complexity to
+# fix given this window rarely falls outside EDT months; the regular daily
+# check still covers those days regardless.
+
+on:
+  schedule:
+    - cron: "0 13 * * *"
+    - cron: "0 16 * * *"
+    - cron: "0 19 * * *"
+    - cron: "0 22 * * *"
+  workflow_dispatch: {}
+
+concurrency:
+  group: btoa-monitor
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  check-window:
+    runs-on: ubuntu-latest
+    outputs:
+      should_run: ${{ steps.gate.outputs.should_run }}
+    steps:
+      - id: gate
+        run: |
+          today=$(TZ=America/New_York date +%d)
+          month=$(TZ=America/New_York date +%Y-%m)
+          dow_14=$(TZ=America/New_York date -d "${month}-14" +%u)
+          dow_15=$(TZ=America/New_York date -d "${month}-15" +%u)
+          should_run=false
+          if [ "$today" = "14" ] || [ "$today" = "15" ]; then
+            should_run=true
+          elif [ "$today" = "16" ]; then
+            if [ "$dow_14" -ge 6 ] || [ "$dow_15" -ge 6 ]; then
+              should_run=true
+            fi
+          fi
+          echo "Today (ET): $today, 14th dow=$dow_14, 15th dow=$dow_15 -> should_run=$should_run"
+          echo "should_run=$should_run" >> "$GITHUB_OUTPUT"
+
+  monitor:
+    needs: check-window
+    if: needs.check-window.outputs.should_run == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore state
+        uses: actions/cache@v4
+        with:
+          path: |
+            state.json
+            statcan_state.json
+            bts_state.json
+          key: border-monitor-state-${{ github.run_id }}
+          restore-keys: border-monitor-state-
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Check BTOA traffic file
+        env:
+          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASS: ${{ secrets.GMAIL_APP_PASS }}
+          NOTIFY_EMAILS: ${{ secrets.NOTIFY_EMAILS }}
+        run: python btoa_monitor.py
