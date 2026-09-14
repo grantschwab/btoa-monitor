@@ -45,6 +45,12 @@ SNAPSHOT_CATEGORIES = [
 # First month to get its own bar-chart snapshot tab.
 SNAPSHOT_START_YM = (2026, 8)
 
+# GHIB opened Jul 27, 2026. The source sheet zero-pads years before it
+# existed (e.g. 2025) rather than leaving them blank -- and inconsistently
+# so, with some classification rows None and others explicit 0 for the same
+# year. Treat anything before opening as not reported, full stop.
+GHIB_OPENED_YM = (2026, 7)
+
 MONTH_NAMES = [
     "January", "February", "March", "April", "May", "June",
     "July", "August", "September", "October", "November", "December",
@@ -104,6 +110,10 @@ def parse_bridge_monthly(xlsx_bytes, sheet_name):
             # (a formatting quirk, not a data conflict) -- last write wins,
             # harmlessly, since the values match.
             data.setdefault((year, i + 1), {})[classification] = v
+
+    if sheet_name == "GHIB":
+        data = {ym: v for ym, v in data.items() if ym >= GHIB_OPENED_YM}
+
     return data
 
 
