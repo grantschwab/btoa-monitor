@@ -24,23 +24,23 @@ BRIDGE_LABELS = {
 
 # (source row classification, output sheet name)
 ANALYSIS_SHEETS = [
-    ("TOTAL", "Overall traffic"),
     ("Passenger Cars", "Car traffic"),
     ("Trucks", "Truck traffic"),
+    ("TOTAL", "Overall traffic"),
 ]
-# (source row classification, chart Category label) -- Total vehicles listed
-# first per the requested chart-tab layout.
+# (source row classification, chart Category label) -- Cars, Trucks, then
+# Total per the requested chart-tab layout.
 CHART_CATEGORIES = [
-    ("TOTAL", "Total vehicles"),
     ("Passenger Cars", "Passenger cars"),
     ("Trucks", "Trucks"),
+    ("TOTAL", "Total vehicles"),
 ]
 
 # Same ordering, shorter labels, for the per-month bar-chart snapshot tabs.
 SNAPSHOT_CATEGORIES = [
-    ("TOTAL", "Total"),
     ("Passenger Cars", "Cars"),
     ("Trucks", "Trucks"),
+    ("TOTAL", "Total"),
 ]
 # First month to get its own bar-chart snapshot tab.
 SNAPSHOT_START_YM = (2026, 8)
@@ -260,8 +260,8 @@ def build_workbook(xlsx_bytes, path, min_year=2019):
         ("Source page", BTOA_PAGE_URL),
         ("Coverage", "Ambassador Bridge, Blue Water Bridge, Detroit-Windsor Tunnel, Gordie Howe International Bridge -- bidirectional (both directions combined), operator-reported. GHIB opened July 27, 2026, so its columns are blank before then and partial for its first (July 2026) month."),
         ("Vehicle categories", "'Overall traffic' = TOTAL row (Passenger Cars + Trucks + Buses & Misc.). 'Car traffic' = Passenger Cars. 'Truck traffic' = Trucks. Buses & Misc. is in the source but not broken out in its own tab here."),
-        ("Chart Data tab", "Long format for charting: one row per month per category (Total vehicles, Passenger cars, Trucks, in that order), with each bridge as a column. Matches the layout used for the existing chart."),
-        ("Monthly snapshot tabs", f"One tab per month from {MONTH_NAMES[SNAPSHOT_START_YM[1]-1]} {SNAPSHOT_START_YM[0]} onward (e.g. 'August 2026'), formatted for a bar chart: crossing, this month vs. same month prior year, pct_change, category (Total/Cars/Trucks). A new tab appears automatically once that month is reported."),
+        ("Chart Data tab", "Long format for charting: one row per month per category (Passenger cars, Trucks, Total vehicles, in that order), with each bridge as a column. Matches the layout used for the existing chart."),
+        ("Monthly snapshot tabs", f"One tab per month from {MONTH_NAMES[SNAPSHOT_START_YM[1]-1]} {SNAPSHOT_START_YM[0]} onward (e.g. 'August 2026'), formatted for a bar chart: crossing, this month vs. same month prior year, pct_change, category (Cars/Trucks/Total, in that order). A new tab appears automatically once that month is reported."),
         ("Date range shown", f"{min_year}-present. Underlying source data goes back further (to 2006) and is used internally to compute YoY % for {min_year}, but only {min_year}+ rows are shown."),
         ("YoY %", "(this month - same month prior year) / prior year."),
         ("Rebuilt", datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")),
