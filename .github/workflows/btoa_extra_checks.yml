@@ -3,21 +3,35 @@ name: BTOA Extra Checks (finalization window)
 # BTOA typically finalizes and republishes its spreadsheet ~14 days after
 # the start of the month. This workflow adds extra checks around that
 # window (the 14th, 15th, and the 16th if the 14th or 15th falls on a
-# weekend) at 9am/noon/3pm/6pm ET, on top of the regular daily check in
-# btoa_monitor.yml, to catch the update sooner than a once-a-day cron would.
+# weekend), every 30 minutes from 8am-5pm ET, on top of the regular daily
+# check in btoa_monitor.yml.
 #
-# Cron times below are fixed UTC (9am/12pm/3pm/6pm EDT = 13/16/19/22 UTC)
-# and don't shift for standard time — during EST (winter) these effectively
-# run an hour earlier than intended local time. Not worth the complexity to
-# fix given this window rarely falls outside EDT months; the regular daily
+# Why every 30 min instead of a handful of fixed times: GitHub Actions'
+# own scheduler is best-effort, not guaranteed -- on Sept 14, 2026 (an
+# actual finalization day), the 9am and noon ET runs didn't fire at all
+# until manually triggered, and the day before, runs were delayed 1-4
+# hours from their nominal cron times. No workflow-level config can force
+# GitHub's scheduler to be exact; running every 30 min is the practical
+# mitigation (more chances one lands close to on time even if others are
+# dropped or delayed).
+#
+# Auto-stop: the check-window job also reads the cached state.json and
+# skips the actual check once the target month (the previous calendar
+# month, which is what BTOA is finalizing during this window) is already
+# recorded there -- so once a run anywhere in the 14-16 window detects the
+# update, every later run that day (and on the remaining days) becomes a
+# cheap no-op instead of re-downloading/re-emailing.
+#
+# Cron times below are fixed UTC (8am-5pm EDT = 12:00-21:00 UTC) and don't
+# shift for standard time -- during EST (winter) these effectively run an
+# hour earlier than intended local time. Not worth the complexity to fix
+# given this window rarely falls outside EDT months; the regular daily
 # check still covers those days regardless.
 
 on:
   schedule:
-    - cron: "0 13 * * *"
-    - cron: "0 16 * * *"
-    - cron: "0 19 * * *"
-    - cron: "0 22 * * *"
+    - cron: "*/30 12-20 * * *"
+    - cron: "0 21 * * *"
   workflow_dispatch: {}
 
 concurrency:
@@ -31,7 +45,7 @@ jobs:
   check-window:
     runs-on: ubuntu-latest
     outputs:
-      should_run: ${{ steps.gate.outputs.should_run }}
+      should_run: ${{ steps.gate.outputs.should_run == 'true' && steps.already_detected.outputs.already_detected == 'false' }}
     steps:
       - id: gate
         run: |
@@ -49,6 +63,34 @@ jobs:
           fi
           echo "Today (ET): $today, 14th dow=$dow_14, 15th dow=$dow_15 -> should_run=$should_run"
           echo "should_run=$should_run" >> "$GITHUB_OUTPUT"
+
+      - name: Restore state (read-only check)
+        if: steps.gate.outputs.should_run == 'true'
+        uses: actions/cache/restore@v4
+        with:
+          path: state.json
+          key: border-monitor-state-${{ github.run_id }}
+          restore-keys: border-monitor-state-
+
+      - id: already_detected
+        if: steps.gate.outputs.should_run == 'true'
+        run: |
+          python3 -c "
+          import json, datetime
+          try:
+              state = json.load(open('state.json'))
+              latest = tuple(state.get('latest_ym', [0, 0]))
+          except FileNotFoundError:
+              latest = (0, 0)
+          today = datetime.datetime.now(datetime.timezone.utc).astimezone(
+              datetime.timezone(datetime.timedelta(hours=-4))
+          )
+          target_month = today.month - 1 or 12
+          target_year = today.year if today.month > 1 else today.year - 1
+          done = latest >= (target_year, target_month)
+          print(f'latest_ym={latest} target=({target_year},{target_month}) done={done}')
+          print(f'already_detected={str(done).lower()}')
+          " | tee /dev/stderr | tail -1 >> "$GITHUB_OUTPUT"
 
   monitor:
     needs: check-window

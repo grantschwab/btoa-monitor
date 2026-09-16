@@ -60,14 +60,21 @@ regardless of where the scripts live):
 - **`.github/workflows/btoa_monitor.yml`** — daily at 13:00 UTC (~9am ET),
   runs all three monitors in sequence, then commits any updated
   spreadsheets.
-- **`.github/workflows/btoa_extra_checks.yml`** — runs 4x/day
-  (9am/noon/3pm/6pm ET) but only actually executes `btoa_monitor.py` on the
-  14th, 15th, or a weekend-adjusted 16th of the month, gated by a bash date
-  check. BTOA typically finalizes its spreadsheet ~14 days after month
-  start, so this catches that update within hours instead of waiting for
-  the once-daily cron. Shares the `btoa-monitor` concurrency group with the
-  daily workflow (serialized, not cancelled) to avoid racing on
-  `state.json`/git state.
+- **`.github/workflows/btoa_extra_checks.yml`** — runs every 30 minutes,
+  8am-5pm ET, but only actually executes `btoa_monitor.py` on the 14th,
+  15th, or a weekend-adjusted 16th of the month (the finalization window),
+  gated by a `check-window` job. Also auto-stops once detected: that job
+  reads the cached `state.json` and skips the run if `latest_ym` already
+  covers the target month (the previous calendar month, computed fresh
+  each run) — so once any run in the window catches the update, the rest
+  of that day and any remaining days become cheap no-ops instead of
+  re-checking BTOA and re-emailing. Every 30 min (not a handful of fixed
+  times) because GitHub Actions' own scheduler is best-effort, not
+  guaranteed — on Sept 14, 2026, the 9am/noon ET runs didn't fire at all
+  until manually triggered, and no workflow config can force GitHub to be
+  exact; denser polling is the practical mitigation. Shares the
+  `btoa-monitor` concurrency group with the daily workflow (serialized,
+  not cancelled) to avoid racing on `state.json`/git state.
 
 Each monitor keeps its own state file (`state.json` / `statcan_state.json`
 / `bts_state.json`), cached via `actions/cache` (not committed to git)
@@ -87,9 +94,11 @@ Trigger a workflow manually via **Actions → Border Crossing Monitor → Run
 workflow** with `force: true` to send test emails from all three monitors
 regardless of whether anything changed. **Actions → BTOA Extra Checks
 (finalization window) → Run workflow** can also be triggered manually, but
-the date gate still applies even on manual dispatch — it only actually
-checks BTOA on the 14th/15th/16th window, so a manual run on any other day
-will show `should_run=false` in the `check-window` job logs and skip.
+both gates still apply even on manual dispatch — the date check (only the
+14th/15th/16th window) and the already-detected check (skips if the target
+month is already in cached state) — so a manual run outside the window, or
+after the month's already been caught, will show `should_run=false` in the
+`check-window` job logs and skip.
 
 To run a single monitor locally (from the repo root, so relative paths
 resolve the same way as in Actions):
