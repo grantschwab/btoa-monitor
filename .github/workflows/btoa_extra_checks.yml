@@ -43,7 +43,8 @@ permissions:
 
 jobs:
   check-window:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
     outputs:
       should_run: ${{ steps.gate.outputs.should_run == 'true' && steps.already_detected.outputs.already_detected == 'false' }}
     steps:
@@ -95,7 +96,8 @@ jobs:
   monitor:
     needs: check-window
     if: needs.check-window.outputs.should_run == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 

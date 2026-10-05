@@ -1,0 +1,32 @@
+name: Border Crossing Monitor Retry
+
+# Re-runs the daily Border Crossing Monitor once if it fails or is
+# cancelled (e.g. GitHub never assigned a runner). Only retries the first
+# attempt, so a second failure doesn't loop. Waits 15 min first so a
+# transient runner outage has time to clear.
+
+on:
+  workflow_run:
+    workflows: ["Border Crossing Monitor"]
+    types: [completed]
+
+permissions:
+  actions: write
+
+jobs:
+  retry:
+    if: >-
+      (github.event.workflow_run.conclusion == 'failure' ||
+       github.event.workflow_run.conclusion == 'cancelled') &&
+      github.event.workflow_run.run_attempt == 1 &&
+      github.event.workflow_run.event == 'schedule'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Wait, then re-run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+        run: |
+          sleep 900
+          gh run rerun "$RUN_ID" --repo "$GITHUB_REPOSITORY"
